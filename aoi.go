@@ -50,6 +50,11 @@ func (g *Grid[ObjID]) Rectangle() (int, int, int, int) {
 	return g.minX, g.minY, g.maxX, g.maxY
 }
 
+// RowCol 行列
+func (g *Grid[ObjID]) RowCol() (int, int) {
+	return g.row, g.col
+}
+
 // ObjIDs 当前格子的所有obj
 func (g *Grid[ObjID]) ObjIDs() map[ObjID]struct{} {
 	return g.objs
@@ -118,11 +123,12 @@ type AOIManager[T ObjID] struct {
 }
 
 // NewAOIManager 构造
+// minX, minY, maxX, maxY 可以是负数
 func NewAOIManager[T ObjID](minX, minY, maxX, maxY int, gridW, gridH int) (*AOIManager[T], error) {
-	if gridH == 0 || gridW == 0 {
+	if gridH <= 0 || gridW <= 0 {
 		return nil, fmt.Errorf("gridH,gridW should not be 0")
 	}
-	if minX > maxX || minY > maxY {
+	if minX >= maxX || minY >= maxY {
 		return nil, fmt.Errorf("min should be small than max")
 	}
 	// 列
@@ -223,6 +229,10 @@ func (m *AOIManager[ObjID]) atGridIndex(posX, posY int) int {
 
 // Enter 进入
 func (m *AOIManager[ObjID]) Enter(obj ObjID, posX, posY int) Grids[ObjID] {
+	if pos, ok := m.pos[obj]; ok {
+		g := m.AtGrid(pos.x, pos.y)
+		g.del(obj)
+	}
 	m.pos[obj] = &pos{posX, posY}
 	g := m.AtGrid(posX, posY)
 	g.add(obj)
@@ -230,8 +240,12 @@ func (m *AOIManager[ObjID]) Enter(obj ObjID, posX, posY int) Grids[ObjID] {
 }
 
 // Leave 离开
-func (m *AOIManager[ObjID]) Leave(obj ObjID, posX, posY int) Grids[ObjID] {
-	g := m.AtGrid(posX, posY)
+func (m *AOIManager[ObjID]) Leave(obj ObjID) Grids[ObjID] {
+	pos, ok := m.pos[obj]
+	if !ok {
+		return nil
+	}
+	g := m.AtGrid(pos.x, pos.y)
 	g.del(obj)
 	delete(m.pos, obj)
 	return g.surroundGrids
@@ -242,10 +256,9 @@ func (m *AOIManager[ObjID]) Leave(obj ObjID, posX, posY int) Grids[ObjID] {
 // enterGrids 新进入的格子,广播创建obj
 // leaveGrids 离开的格子,广播删除obj
 func (m *AOIManager[ObjID]) Move(obj ObjID, toPosX, toPosY int) (currentGrids, enterGrids, leaveGrids Grids[ObjID]) {
-	// 不存在按新进入
 	pos, ok := m.pos[obj]
 	if !ok {
-		return nil, m.Enter(obj, toPosX, toPosY), nil
+		return nil, nil, nil
 	}
 
 	// 更新坐标

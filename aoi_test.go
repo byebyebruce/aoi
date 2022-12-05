@@ -62,20 +62,23 @@ func TestAOI(t *testing.T) {
 	fmt.Println("leave", leave)
 	fmt.Println()
 
-	fmt.Println(a.Leave(obj.id, obj.x, obj.y))
+	fmt.Println(a.Leave(obj.id))
 }
 
 func BenchmarkMove(b *testing.B) {
 	rand.Seed(time.Now().Unix())
 	const (
-		w = 10000
-		h = 10000
+		w   = 10000
+		h   = 10000
+		obj = 100
 	)
 	a, _ := NewAOIManager[int](-w/2, -h/2, w, w, 10, 10)
-	x, y := 0, 0
+	for i := 0; i < obj; i++ {
+		a.Enter(i, 0, 0)
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		x, y = rand.Int()%30, rand.Int()%30
+		x, y := rand.Int()%30, rand.Int()%30
 		_, _, _ = a.Move(i%100, x, y)
 	}
 }

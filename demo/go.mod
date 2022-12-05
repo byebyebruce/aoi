@@ -5,6 +5,7 @@ go 1.19
 replace github.com/byebyebruce/aoi => ../
 
 require (
+	github.com/JoelOtter/termloop v0.0.0-20210806173944-5f7c38744afb
 	github.com/byebyebruce/aoi v0.0.0-00010101000000-000000000000
 	github.com/byebyebruce/varmon v0.0.0-20221202084016-0bb617196f15
 	github.com/gizak/termui/v3 v3.1.0
