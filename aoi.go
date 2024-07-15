@@ -6,9 +6,22 @@ import (
 	"math"
 )
 
+/*
+ */
 const (
-	GridLength = 3                       // 变长3个格子
-	GridNum    = GridLength * GridLength // 九宫格
+	// GridLength 一边3个格子
+	GridLength = 3
+	// GridNum 九宫格
+	GridNum = GridLength * GridLength
+)
+
+const (
+	// Enter 进入
+	Enter AOIEvent = iota
+	// Leave 离开
+	Leave
+	// Move 移动
+	Move
 )
 
 // ObjID id 类型
@@ -17,109 +30,45 @@ type ObjID interface {
 	comparable
 }
 
-// Grid 格子
-type Grid[T ObjID] struct {
-	id                     int              // 格子id
-	row, col               int              // 行列
-	minX, minY, maxX, maxY int              // 格子范围
-	objs                   map[T]struct{}   // obj
-	surroundGrids          []*Grid[T]       // 九个格子(自己和周围的8个格子)
-	surroundGridsMap       map[int]struct{} // map用作快速求交集并集
-}
+type AOIEvent int
 
-func (g *Grid[ObjID]) add(obj ObjID) {
-	g.objs[obj] = struct{}{}
-}
-func (g *Grid[ObjID]) del(obj ObjID) {
-	delete(g.objs, obj)
-}
-func (g *Grid[ObjID]) isSurround(gridID int) bool {
-	_, ok := g.surroundGridsMap[gridID]
-	return ok
-}
-func (g *Grid[ObjID]) addSurroundGrid(other *Grid[ObjID]) {
-	if _, ok := g.surroundGridsMap[other.id]; ok {
-		panic("duplicate grid")
-	}
-	g.surroundGridsMap[other.id] = struct{}{}
-	g.surroundGrids = append(g.surroundGrids, other)
-}
-
-// Rectangle 矩形坐标
-func (g *Grid[ObjID]) Rectangle() (int, int, int, int) {
-	return g.minX, g.minY, g.maxX, g.maxY
-}
-
-// RowCol 行列
-func (g *Grid[ObjID]) RowCol() (int, int) {
-	return g.row, g.col
-}
-
-// ObjIDs 当前格子的所有obj
-func (g *Grid[ObjID]) ObjIDs() map[ObjID]struct{} {
-	return g.objs
-}
-
-// Has 是否包含obj
-func (g *Grid[ObjID]) Has(obj ObjID) bool {
-	_, ok := g.objs[obj]
-	return ok
-}
-
-// Foreach 遍历当前格子包含的obj
-func (g *Grid[ObjID]) Foreach(f func(ObjID) bool) {
-	for k := range g.objs {
-		if !f(k) {
-			return
-		}
-	}
-}
-
-// ID 格子id
-func (g *Grid[ObjID]) ID() int {
-	return g.id
-}
-
-func (g *Grid[ObjID]) String() string {
-	return fmt.Sprintf("{%d:(%d,%d) %v}", g.id, g.row, g.col, g.objs)
-}
-
-// Grids 格子切片类型
-type Grids[T ObjID] []*Grid[T]
-
-// Foreach 遍历ObjID
-func (gs Grids[T]) Foreach(f func(ObjID T) bool) {
-	for _, g := range gs {
-		for k := range g.objs {
-			if !f(k) {
-				return
-			}
-		}
-	}
-}
+type EventCallback[T ObjID] func(event AOIEvent, eventMaker T, eventWatcher T)
 
 /*
 3行row 4列col
-	col0	col1 	col2 	col3
-row2 |8		|9		|10		|11|
-row1 |4 	|5		|6		|7|
-row0 |0		|1		|2		|3|
 
+   col0 col1 col2 col3
+	+---+---+---+---+
+row2| 8 | 9 | 10| 11|
+	+---+---+---+---+
+row1| 4 | 5 | 6 | 7 |
+	+---+---+---+---+
+row0| 0 | 1 | 2 | 3 |
+	+---+---+---+---+
+
+ ^y
+ |
+ |
+ |
+ 0------->x
 格子7 在row1 col3
-7=1*4=3
+7=4*1+3
+格子10 在row2 col2
+10=4*2+2
 */
 
-type pos struct {
-	x, y int
+type point struct {
+	x, y   int
+	gridID int
 }
 
 // AOIManager aoi管理器
 type AOIManager[T ObjID] struct {
-	minX, maxX, minY, maxY int        // 地图范围
-	gridW, gridH           int        // 格子宽高
-	row, col               int        // 行列
-	grids                  []*Grid[T] // 所有格子
-	pos                    map[T]*pos // 对象的坐标
+	minX, maxX, minY, maxY int          // 地图范围
+	gridW, gridH           int          // 格子宽高
+	row, col               int          // 行列
+	grids                  []*Grid[T]   // 所有格子
+	pos                    map[T]*point // 对象的坐标
 }
 
 // NewAOIManager 构造
@@ -145,7 +94,7 @@ func NewAOIManager[T ObjID](minX, minY, maxX, maxY int, gridW, gridH int) (*AOIM
 		col:   col,
 		row:   row,
 		grids: make([]*Grid[T], col*row),
-		pos:   make(map[T]*pos),
+		pos:   make(map[T]*point),
 	}
 	m.init()
 	return m, nil
@@ -167,16 +116,7 @@ func (m *AOIManager[ObjID]) init() {
 			if gridMaxY > m.maxY {
 				gridMaxY = m.maxY
 			}
-			g := &Grid[ObjID]{
-				id:   idx,
-				minX: gridMinX, minY: gridMinY, maxX: gridMaxX, maxY: gridMaxY,
-				objs:             make(map[ObjID]struct{}),
-				col:              col,
-				row:              row,
-				surroundGrids:    make([]*Grid[ObjID], 0, GridNum),
-				surroundGridsMap: make(map[int]struct{}, GridNum),
-			}
-			m.grids[idx] = g
+			m.grids[idx] = newGrid[ObjID](idx, gridMinX, gridMinY, gridMaxX, gridMaxY, row, col)
 		}
 	}
 
@@ -205,111 +145,137 @@ func (m *AOIManager[ObjID]) init() {
 	}
 }
 
-func (m *AOIManager[ObjID]) atRowCol(posX, posY int) (row, col int) {
-	col = int(float64(posX) / float64(m.gridW))
-	if col < 0 {
-		col = 0
-	}
-	if col >= m.col {
-		col = m.col - 1
-	}
-	row = int(float64(posY) / float64(m.gridH))
-	if row < 0 {
-		row = 0
-	}
-	if row >= m.row {
-		row = m.row - 1
-	}
-	return
-}
 func (m *AOIManager[ObjID]) atGridIndex(posX, posY int) int {
-	row, col := m.atRowCol(posX, posY)
+	var col, row int
+	if posX <= m.minX {
+		col = 0
+	} else if posX >= m.maxX {
+		col = m.col - 1
+	} else {
+		col = int(float64(posX-m.minX) / float64(m.gridW))
+	}
+	if posY <= m.minY {
+		row = 0
+	} else if posY >= m.maxY {
+		row = m.row - 1
+	} else {
+		row = int(float64(posY-m.minY) / float64(m.gridH))
+	}
 	return m.gridIndex(row, col)
 }
 
 // Enter 进入
-func (m *AOIManager[ObjID]) Enter(obj ObjID, posX, posY int) Grids[ObjID] {
-	if pos, ok := m.pos[obj]; ok {
-		g := m.AtGrid(pos.x, pos.y)
-		g.del(obj)
+func (m *AOIManager[ObjID]) Enter(id ObjID, posX, posY int, cb EventCallback[ObjID]) bool {
+	if _, ok := m.pos[id]; ok {
+		return false
 	}
-	m.pos[obj] = &pos{posX, posY}
 	g := m.AtGrid(posX, posY)
-	g.add(obj)
-	return g.surroundGrids
+	g.add(id)
+	m.pos[id] = &point{posX, posY, g.id}
+	if cb != nil {
+		for _, grid := range g.SurroundGrids() {
+			grid.onEvent(Enter, id, cb)
+		}
+	}
+	return true
 }
 
 // Leave 离开
-func (m *AOIManager[ObjID]) Leave(obj ObjID) Grids[ObjID] {
-	pos, ok := m.pos[obj]
+func (m *AOIManager[ObjID]) Leave(id ObjID, cb EventCallback[ObjID]) bool {
+	pos, ok := m.pos[id]
 	if !ok {
-		return nil
+		return false
 	}
-	g := m.AtGrid(pos.x, pos.y)
-	g.del(obj)
-	delete(m.pos, obj)
-	return g.surroundGrids
+	g := m.grids[pos.gridID]
+	g.del(id)
+	delete(m.pos, id)
+
+	if cb != nil {
+		for _, grid := range g.SurroundGrids() {
+			grid.onEvent(Leave, id, cb)
+		}
+	}
+
+	return true
 }
 
 // Move 移动
-// currentGrids 没变的格子,直接广播坐标
-// enterGrids 新进入的格子,广播创建obj
-// leaveGrids 离开的格子,广播删除obj
-func (m *AOIManager[ObjID]) Move(obj ObjID, toPosX, toPosY int) (currentGrids, enterGrids, leaveGrids Grids[ObjID]) {
-	pos, ok := m.pos[obj]
+/*
+form 1 to 2
+G1: 1所在个9九宫
+G2: 2所在个9九宫
+L: Leave
+M: Move
+E: Enter
+
+公式
+L = G1-G2
+M = G2∩G1
+E = G2-G1
++----+----+----+----+
+|  L |  M |  M |  E |
++----+----+----+----+
+|  L |  1 |  2 |  E |
++----+----+----+----+
+|  L |  M |  M |  E |
++----+----+----+----+
+*/
+func (m *AOIManager[ObjID]) Move(id ObjID, toPosX, toPosY int, cb EventCallback[ObjID]) bool {
+	pos, ok := m.pos[id]
 	if !ok {
-		return nil, nil, nil
+		return false
 	}
+
+	fromGrid := m.grids[pos.gridID]
+	toGrid := m.AtGrid(toPosX, toPosY)
 
 	// 更新坐标
-	oldPosX, oldPosY := pos.x, pos.y
-	pos.x, pos.y = toPosX, toPosY
+	pos.x, pos.y, pos.gridID = toPosX, toPosY, toGrid.id
 
-	oldRow, oldCol := m.atRowCol(oldPosX, oldPosY)
-	toRow, toCol := m.atRowCol(toPosX, toPosY)
-	toGrid := m.grids[m.gridIndex(toRow, toCol)]
 	// 格子没变
-	if oldCol == toCol && oldRow == toRow {
-		return toGrid.surroundGrids, nil, nil
+	if fromGrid.id == toGrid.id {
+		for _, grid := range toGrid.SurroundGrids() {
+			grid.onEvent(Move, id, cb)
+		}
+		return true
 	}
 
-	oldGrid := m.grids[m.gridIndex(oldRow, oldCol)]
-	oldGrid.del(obj)
-	toGrid.add(obj)
+	fromGrid.del(id)
+	toGrid.add(id)
 
 	// 做个优化如果格子跨度很大直接返回
-	if abs(toRow-oldRow) >= GridLength || abs(toCol-oldCol) >= GridLength {
-		return nil, toGrid.surroundGrids, oldGrid.surroundGrids
+	if abs(toGrid.row-fromGrid.row) >= GridLength || abs(toGrid.col-fromGrid.col) >= GridLength {
+		for _, grid := range toGrid.SurroundGrids() {
+			grid.onEvent(Enter, id, cb)
+		}
+		for _, grid := range fromGrid.SurroundGrids() {
+			grid.onEvent(Leave, id, cb)
+		}
+		return true
 	}
 
-	enterGrids = make([]*Grid[ObjID], 0, GridLength)
-	leaveGrids = make([]*Grid[ObjID], 0, GridLength)
-	// 离开的格子 = 旧的九宫格-到达的九宫格
-	for _, grid := range oldGrid.surroundGrids {
+	// 离开的格子 = 原来所在的九宫格-到达的九宫格
+	for _, grid := range fromGrid.SurroundGrids() {
 		if !toGrid.isSurround(grid.id) {
-			leaveGrids = append(leaveGrids, grid)
+			grid.onEvent(Leave, id, cb)
 		}
 	}
-	// 新进入的格子 = 到达的九宫格-旧的九宫格
-	for _, grid := range toGrid.surroundGrids {
-		if !oldGrid.isSurround(grid.id) {
-			enterGrids = append(enterGrids, grid)
+
+	// 没变的格子 = 原来所在的九宫格和到达的九宫格取交集
+	for _, grid := range toGrid.SurroundGrids() {
+		if fromGrid.isSurround(grid.id) {
+			grid.onEvent(Move, id, cb)
 		}
 	}
-	// 没变的格子 = 到达的九宫格-新进入的格子
-	for _, grid := range toGrid.surroundGrids {
-		has := false
-		for _, v := range enterGrids {
-			if v.id == grid.id {
-				has = true
-				break
-			}
-		}
-		if !has {
-			currentGrids = append(currentGrids, grid)
+
+	// 新进入的格子 = 到达的九宫格-原来所在的九宫格
+	for _, grid := range toGrid.SurroundGrids() {
+		if !fromGrid.isSurround(grid.id) {
+			grid.onEvent(Enter, id, cb)
 		}
 	}
-	return
+
+	return true
 }
 
 // AtGrid 坐标所在的格子
@@ -318,22 +284,27 @@ func (m *AOIManager[ObjID]) AtGrid(posX, posY int) *Grid[ObjID] {
 	return m.grids[m.atGridIndex(posX, posY)]
 }
 
-// SurroundGrids 坐标所在包围的九宫格
-func (m *AOIManager[ObjID]) SurroundGrids(posX, posY int) Grids[ObjID] {
-	return m.grids[m.atGridIndex(posX, posY)].surroundGrids
-}
-
 // AllGrids 所有格子
-func (m *AOIManager[ObjID]) AllGrids() Grids[ObjID] {
+func (m *AOIManager[ObjID]) AllGrids() []*Grid[ObjID] {
 	return m.grids
 }
 
 func (m *AOIManager[ObjID]) String() string {
 	str := ""
-	for _, v := range m.grids {
-		str += v.String() + "\n"
+	for row := 0; row < m.row; row++ {
+		for col := 0; col < m.col; col++ {
+			str += fmt.Sprintf("%10s ", m.grids[m.gridIndex(row, col)])
+		}
+		str += "\n"
 	}
 	return str
+}
+
+func (m *AOIManager[ObjID]) Clear() {
+	m.pos = make(map[ObjID]*point)
+	for _, v := range m.grids {
+		v.clear()
+	}
 }
 
 func abs(a int) int {

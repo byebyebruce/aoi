@@ -17,7 +17,6 @@ type obj struct {
 	id     int
 	x, y   int
 	vx, vy int
-	see    map[int]struct{}
 }
 
 func (o *obj) name() string {
@@ -34,6 +33,7 @@ type game struct {
 	tickCount              int
 	a                      *aoi.AOIManager[int]
 	pause                  bool
+	see                    map[int]struct{}
 }
 
 func newGame(npcNum int, minx, miny, maxx, maxy, w, h int) *game {
@@ -48,21 +48,19 @@ func newGame(npcNum int, minx, miny, maxx, maxy, w, h int) *game {
 		maxy: maxy,
 		a:    a,
 		objs: map[int]*obj{},
+		see:  map[int]struct{}{},
 	}
 
-	g.player = &obj{
-		id:  0,
-		x:   g.maxx / 2,
-		y:   g.maxy / 2,
-		see: map[int]struct{}{},
-	}
-	g.objs[g.player.id] = g.player
-	for i := 1; i < npcNum; i++ {
+	for i := 0; i < npcNum; i++ {
 		g.objs[i] = &obj{
 			id: i,
 			x:  rand.Int() % g.maxx,
 			y:  rand.Int() % g.maxy,
 		}
+		if i == 0 {
+			g.player = g.objs[i]
+		}
+		g.a.Enter(i, g.objs[i].x, g.objs[i].y, nil)
 	}
 
 	return g
@@ -91,30 +89,51 @@ func (g *game) tick() {
 		}
 	}
 	for _, o := range g.objs {
-		_, eg, lg := g.a.Move(o.id, o.x, o.y)
-		if o.isPlayer() {
-			eg.Foreach(func(id int) bool {
-				o.see[id] = struct{}{}
-				return true
-			})
-			lg.Foreach(func(id int) bool {
-				delete(o.see, id)
-				return true
-			})
-		} else {
-			eg.Foreach(func(id int) bool {
-				if g.objs[id].isPlayer() {
-					g.objs[id].see[o.id] = struct{}{}
-				}
-				return true
-			})
-			lg.Foreach(func(id int) bool {
-				if g.objs[id].isPlayer() {
-					delete(g.objs[id].see, o.id)
-				}
-				return true
-			})
+		if !o.isPlayer() {
+			//continue
 		}
+		g.a.Move(o.id, o.x, o.y, func(event aoi.AOIEvent, eventMaker int, eventWatcher int) {
+			if eventMaker == g.player.id {
+				if event == aoi.Enter || event == aoi.Move {
+					g.see[eventWatcher] = struct{}{}
+				} else if event == aoi.Leave {
+					delete(g.see, eventWatcher)
+				}
+			} else if eventWatcher == g.player.id {
+				if event == aoi.Enter || event == aoi.Move {
+					g.see[eventMaker] = struct{}{}
+				} else if event == aoi.Leave {
+					delete(g.see, eventMaker)
+				}
+			}
+		})
+		/*
+			_, eg, lg :=
+			if o.isPlayer() {
+				eg.ForeachObj(func(id int) bool {
+					o.see[id] = struct{}{}
+					return true
+				})
+				lg.ForeachObj(func(id int) bool {
+					delete(o.see, id)
+					return true
+				})
+			} else {
+				eg.ForeachObj(func(id int) bool {
+					if g.objs[id].isPlayer() {
+						g.objs[id].see[o.id] = struct{}{}
+					}
+					return true
+				})
+				lg.ForeachObj(func(id int) bool {
+					if g.objs[id].isPlayer() {
+						delete(g.objs[id].see, o.id)
+					}
+					return true
+				})
+			}
+
+		*/
 	}
 
 	g.tickCount++
@@ -193,7 +212,7 @@ func main() {
 			if o.isPlayer() {
 				dot.BorderStyle = ui.NewStyle(ui.ColorRed, ui.ColorRed)
 			} else {
-				if _, ok := g.player.see[o.id]; ok {
+				if _, ok := g.see[o.id]; ok {
 					dot.BorderStyle = ui.NewStyle(ui.ColorYellow, ui.ColorYellow)
 				} else {
 					dot.BorderStyle = ui.NewStyle(ui.ColorCyan, ui.ColorCyan)
@@ -219,20 +238,19 @@ func main() {
 			render()
 		case e := <-uiEvents:
 			if e.Type == ui.KeyboardEvent {
-				g.player.vx = 0
-				g.player.vy = 0
+
 				switch e.ID {
 				case "q", "<C-c>":
 					return
 				case "p":
 					g.pause = !g.pause
-				case "h":
+				case "a":
 					g.player.vx = -playerSpeed
-				case "j":
+				case "s":
 					g.player.vy = -playerSpeed
-				case "k":
+				case "w":
 					g.player.vy = playerSpeed
-				case "l":
+				case "d":
 					g.player.vx = playerSpeed
 				}
 			} else if e.Type == ui.MouseEvent {
@@ -242,8 +260,13 @@ func main() {
 					g.player.x, g.player.y = m.X, maxh-m.Y
 					//cg, eg, lg = a.Move(1, x, y)
 					//render()
+					g.player.vx = 0
+					g.player.vy = 0
 				}
 				//fmt.Println(e.Payload)
+			} else {
+				g.player.vx = 0
+				g.player.vy = 0
 			}
 		}
 

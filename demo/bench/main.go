@@ -93,30 +93,10 @@ func (g *game) tick() {
 		}
 	}
 	for _, o := range g.objs {
-		_, eg, lg := g.a.Move(o.id, o.x, o.y)
-		if o.isPlayer() {
-			eg.Foreach(func(id int) bool {
-				o.see[id] = struct{}{}
-				return true
-			})
-			lg.Foreach(func(id int) bool {
-				delete(o.see, id)
-				return true
-			})
-		} else {
-			eg.Foreach(func(id int) bool {
-				if g.objs[id].isPlayer() {
-					g.objs[id].see[o.id] = struct{}{}
-				}
-				return true
-			})
-			lg.Foreach(func(id int) bool {
-				if g.objs[id].isPlayer() {
-					delete(g.objs[id].see, o.id)
-				}
-				return true
-			})
-		}
+		_ = g.a.Move(o.id, o.x, o.y, func(event aoi.AOIEvent, eventMaker int, eventWatcher int) {
+
+		})
+
 	}
 
 	g.tickCount++

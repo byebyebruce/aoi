@@ -58,7 +58,7 @@ func New(level tl.Level, a *aoi.AOIManager[int]) *game {
 		g.fg = append(g.fg, text)
 	}
 	g.click = tl.NewRectangle(0, 0, 1, 1, tl.ColorGreen)
-	a.Enter(0, 0, 0)
+	a.Enter(0, 0, 0, nil)
 	g.move(0, 0)
 
 	return g
