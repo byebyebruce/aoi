@@ -10,8 +10,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func init() {
+	rand.Seed(time.Now().Unix())
+}
+
 func TestAOI_NewAOIManager(t *testing.T) {
-	a, err := NewAOIManager[int](0, 0, 100, 100, 10, 5)
+	_, err := NewAOIManager[int](100, 100, 10, 5)
+	require.Nil(t, err)
+
+	a, err := NewAOIManager[int](1, 1, 2, 2)
+	require.Nil(t, err)
+	require.EqualValues(t, 1, a.col)
+	require.EqualValues(t, 1, a.row)
+
+	a, err = NewAOIManagerWithMinXY[int](-1, -1, 2, 2, 2, 2)
+	require.Nil(t, err)
+}
+func TestAOI_Init(t *testing.T) {
+	a, err := NewAOIManager[int](100, 100, 10, 5)
 	require.Nil(t, err)
 	require.EqualValues(t, 10, a.col)
 	require.EqualValues(t, 20, a.row)
@@ -27,81 +43,236 @@ func TestAOI_NewAOIManager(t *testing.T) {
 	require.EqualValues(t, 4, len(grid.surroundGrids))
 }
 
-type obj struct {
-	id   int
-	x, y int
+func TestAOI_PosAtGrid(t *testing.T) {
+	a, err := NewAOIManager[int](100, 100, 10, 5)
+	require.Nil(t, err)
+
+	require.EqualValues(t, 0, a.PosAtGrid(-100, -100).ID())
+	require.EqualValues(t, a.col*a.row-1, a.PosAtGrid(1000, 1000).ID())
+
+	require.EqualValues(t, 0, a.PosAtGrid(9, 4).ID())
+	require.EqualValues(t, 9, a.PosAtGrid(99, 1).ID())
+	require.EqualValues(t, 10, a.PosAtGrid(0, 5).ID())
+	require.EqualValues(t, 11, a.PosAtGrid(10, 5).ID())
+	require.EqualValues(t, a.col*a.row-1, a.PosAtGrid(99, 99).ID())
+
+	for i := 0; i < a.row; i++ {
+		for j := 0; j < a.col; j++ {
+			x, y := j*a.gridW, i*a.gridH
+			require.EqualValues(t, i*a.col+j, a.PosAtGrid(x, y).ID())
+		}
+	}
 }
 
-func TestAOI(t *testing.T) {
-	a, err := NewAOIManager[int](0, 0, 100, 100, 10, 10)
+func TestAOI_Enter_Leave(tt *testing.T) {
+	testFunc := func(t *testing.T) {
+		w := 100 + rand.Int()%1000
+		h := 100 + rand.Int()%1000
+		gridW := 5 + rand.Int()%10
+		gridH := 5 + rand.Int()%10
+		a, err := NewAOIManager[int](w, h, gridW, gridH)
+		assert.Nil(t, err)
+
+		for i := 0; i < a.row; i++ {
+			for j := 0; j < a.col; j++ {
+				x, y := j*a.gridW, i*a.gridH
+				id := a.gridIndex(i, j)
+				ok := a.Enter(id, x, y, nil)
+				require.True(t, ok)
+			}
+		}
+
+		testID := -1
+		for i := 0; i < a.row; i++ {
+			for j := 0; j < a.col; j++ {
+				x, y := j*a.gridW, i*a.gridH
+
+				enterID := make(map[int]struct{})
+				leaveID := make(map[int]struct{})
+				g := a.PosAtGrid(x, y)
+				g.ForeachInSurroundGrids(func(other int) {
+					if other == testID {
+						return
+					}
+					enterID[other] = struct{}{}
+					leaveID[other] = struct{}{}
+				})
+
+				exists := a.Enter(testID, x, y, func(other int) {
+					_, ok := enterID[other]
+					require.True(t, ok, other)
+					delete(enterID, other)
+				})
+				require.True(t, exists)
+				require.Len(t, enterID, 0)
+
+				exists = a.Leave(testID, func(other int) {
+					_, ok := leaveID[other]
+					require.True(t, ok)
+					delete(leaveID, other)
+				})
+				require.True(t, exists)
+				require.Len(t, leaveID, 0)
+			}
+		}
+	}
+	for i := 0; i < 20; i++ {
+		tt.Run(fmt.Sprintf("test-%d", i), testFunc)
+	}
+}
+
+func TestAOI_Move(t *testing.T) {
+	w := 100
+	h := 100
+	gridW := 10
+	gridH := 10
+	a, err := NewAOIManager[int](w, h, gridW, gridH)
 	assert.Nil(t, err)
-	//fmt.Println(a)
-	obj := obj{
-		id: 1,
-		x:  0,
-		y:  0,
+
+	for i := 0; i < a.row; i++ {
+		for j := 0; j < a.col; j++ {
+			x, y := j*a.gridW, i*a.gridH
+			id := a.gridIndex(i, j)
+			ok := a.Enter(id, x, y, nil)
+			require.True(t, ok)
+		}
 	}
 
-	ok := a.Enter(obj.id, obj.x, obj.y, func(event AOIEvent, eventMaker int, eventWatcher int) {
-		fmt.Println(event, eventMaker, eventWatcher)
-	})
-	require.True(t, ok)
+	testID := -1
+	type args struct {
+		fromX, formY, toX, toY int
+	}
+	tests := []struct {
+		args  args
+		enter []int
+		leave []int
+		move  []int
+	}{
+		{
+			args{0, 0, 10, 10},
+			[]int{20, 21, 22, 12, 02},
+			[]int{},
+			[]int{10, 11, 0, 01},
+		},
 
-	obj.x += 10
-	ok = a.Move(obj.id, obj.x, obj.y, func(event AOIEvent, eventMaker int, eventWatcher int) {
+		{
+			args{0, 0, 20, 20},
+			[]int{31, 32, 33, 21, 22, 23, 12, 13},
+			[]int{0, 1, 10},
+			[]int{11},
+		},
 
-	})
-	require.True(t, ok)
+		{
+			args{0, 0, 20, 20},
+			[]int{31, 32, 33, 21, 22, 23, 12, 13},
+			[]int{0, 1, 10},
+			[]int{11},
+		},
+
+		{
+			args{0, 0, 00, 30},
+			[]int{40, 41, 30, 31, 20, 21},
+			[]int{0, 1, 10, 11},
+			[]int{},
+		},
+
+		{
+			args{100, 40, 89, 40},
+			[]int{57, 47, 37},
+			[]int{},
+			[]int{58, 48, 38, 39, 49, 59},
+		},
+
+		{
+			args{35, 55, 45, 65},
+			[]int{73, 74, 75, 65, 55},
+			[]int{62, 52, 42, 43, 44},
+			[]int{63, 53, 54, 64},
+		},
+	}
 
 	/*
-		obj.x += 10
-		curr, enter, leave = a.Move(obj.id, obj.x, obj.y)
-		fmt.Println("curr", curr)
-		fmt.Println("enter", enter)
-		fmt.Println("leave", leave)
-		fmt.Println()
+	   +----+----+----+----+----+----+----+----+----+----+
+	   | 90 | 91 | 92 | 93 | 94 | 95 | 96 | 97 | 98 | 99 |
+	   +----+----+----+----+----+----+----+----+----+----+
+	   | 80 | 81 | 82 | 83 | 84 | 85 | 86 | 87 | 88 | 89 |
+	   +----+----+----+----+----+----+----+----+----+----+
+	   | 70 | 71 | 72 | 73 | 74 | 75 | 76 | 77 | 78 | 79 |
+	   +----+----+----+----+----+----+----+----+----+----+
+	   | 60 | 61 | 62 | 63 | 64 | 65 | 66 | 67 | 68 | 69 |
+	   +----+----+----+----+----+----+----+----+----+----+
+	   | 50 | 51 | 52 | 53 | 54 | 55 | 56 | 57 | 58 | 59 |
+	   +----+----+----+----+----+----+----+----+----+----+
+	   | 40 | 41 | 42 | 43 | 44 | 45 | 46 | 47 | 48 | 49 |
+	   +----+----+----+----+----+----+----+----+----+----+
+	   | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 |
+	   +----+----+----+----+----+----+----+----+----+----+
+	   | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 |
+	   +----+----+----+----+----+----+----+----+----+----+
+	   | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 |
+	   +----+----+----+----+----+----+----+----+----+----+
+	   | 00 | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 |
+	   +----+----+----+----+----+----+----+----+----+----+
 
-		obj.y += 10
-		curr, enter, leave = a.Move(obj.id, obj.x, obj.y)
-		fmt.Println("curr", curr)
-		fmt.Println("enter", enter)
-		fmt.Println("leave", leave)
-		fmt.Println()
-
-		obj.y += 10
-		curr, enter, leave = a.Move(obj.id, obj.x, obj.y)
-		fmt.Println("curr", curr)
-		fmt.Println("enter", enter)
-		fmt.Println("leave", leave)
-		fmt.Println()
-
-		obj.y += 30
-		curr, enter, leave = a.Move(obj.id, obj.x, obj.y)
-		fmt.Println("curr", curr)
-		fmt.Println("enter", enter)
-		fmt.Println("leave", leave)
-		fmt.Println()
 	*/
 
-	ok = a.Leave(obj.id, func(event AOIEvent, eventMaker int, eventWatcher int) {})
-	require.True(t, ok)
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("test-%d", tt.args), func(t *testing.T) {
+			defer a.Leave(testID, nil)
+
+			a.Enter(testID, tt.args.fromX, tt.args.formY, nil)
+
+			enterID := make(map[int]struct{})
+			leaveID := make(map[int]struct{})
+			moveID := make(map[int]struct{})
+
+			for _, i := range tt.enter {
+				enterID[i] = struct{}{}
+			}
+			for _, i := range tt.move {
+				moveID[i] = struct{}{}
+			}
+			for _, i := range tt.leave {
+				leaveID[i] = struct{}{}
+			}
+
+			exists := a.Move(testID, tt.args.toX, tt.args.toY, func(event AOIEvent, other int) {
+				if event == Enter {
+					_, ok := enterID[other]
+					require.True(t, ok, other)
+					delete(enterID, other)
+				} else if event == Leave {
+					_, ok := leaveID[other]
+					require.True(t, ok)
+					delete(leaveID, other)
+				} else if event == Move {
+					_, ok := moveID[other]
+					require.True(t, ok)
+					delete(moveID, other)
+				}
+			})
+			require.True(t, exists)
+			require.Len(t, enterID, 0)
+			require.Len(t, leaveID, 0)
+			require.Len(t, moveID, 0)
+		})
+	}
 }
 
 func BenchmarkMove(b *testing.B) {
-	rand.Seed(time.Now().Unix())
 	const (
 		w   = 10000
 		h   = 10000
-		obj = 1000
+		obj = 1000000
 	)
-	a, _ := NewAOIManager[int](0, 0, w, h, 10, 10)
+	a, _ := NewAOIManager[int](w, h, 10, 10)
 	for i := 0; i < obj; i++ {
-		a.Enter(i, rand.Int()%w, rand.Int()%h, func(event AOIEvent, eventMaker int, eventWatcher int) {})
+		a.Enter(i, rand.Int()%w, rand.Int()%h, nil)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		x, y := rand.Int()%w, rand.Int()%h
-		_ = a.Move(i%100, x, y, func(event AOIEvent, eventMaker int, eventWatcher int) {})
+		_ = a.Move(i%obj, x, y, func(event AOIEvent, id int) {})
 	}
 }

@@ -47,14 +47,8 @@ func (g *Grid[ObjID]) addSurroundGrid(other *Grid[ObjID]) {
 	}
 	g.surroundGridsMap[other.id] = struct{}{}
 	g.surroundGrids = append(g.surroundGrids, other)
-}
-
-func (g *Grid[ObjID]) onEvent(event AOIEvent, maker ObjID, cb EventCallback[ObjID]) {
-	for k := range g.objs {
-		if k == maker {
-			continue
-		}
-		cb(event, maker, k)
+	if len(g.surroundGrids) > GridNum {
+		panic("surround grid num is 9")
 	}
 }
 
@@ -63,8 +57,8 @@ func (g *Grid[ObjID]) ID() int {
 	return g.id
 }
 
-// Rectangle 矩形坐标
-func (g *Grid[ObjID]) Rectangle() (int, int, int, int) {
+// BoundingBox 范围
+func (g *Grid[ObjID]) BoundingBox() (int, int, int, int) {
 	return g.minX, g.minY, g.maxX, g.maxY
 }
 
@@ -73,30 +67,31 @@ func (g *Grid[ObjID]) RowCol() (int, int) {
 	return g.row, g.col
 }
 
-// ObjIDs 当前格子的所有obj
-func (g *Grid[ObjID]) ObjIDs() map[ObjID]struct{} {
-	return g.objs
-}
-
 // Contains 是否包含obj
 func (g *Grid[ObjID]) Contains(obj ObjID) bool {
 	_, ok := g.objs[obj]
 	return ok
 }
 
-// ForeachObj 遍历当前格子包含的obj
-func (g *Grid[ObjID]) ForeachObj(f func(ObjID) bool) {
-	for k := range g.objs {
-		if !f(k) {
-			return
+// ObjIDs 当前格子的所有obj
+func (g *Grid[ObjID]) ObjIDs() map[ObjID]struct{} {
+	return g.objs
+}
+
+// SurroundGrids 九宫格(包括自己)
+func (g *Grid[ObjID]) SurroundGrids() []*Grid[ObjID] {
+	return g.surroundGrids
+}
+
+// ForeachInSurroundGrids 遍历当前格子包含的obj
+func (g *Grid[ObjID]) ForeachInSurroundGrids(f func(other ObjID)) {
+	for _, v := range g.surroundGrids {
+		for k := range v.objs {
+			f(k)
 		}
 	}
 }
 
-// SurroundGrids 遍历当前格子包含的obj
-func (g *Grid[ObjID]) SurroundGrids() []*Grid[ObjID] {
-	return g.surroundGrids
-}
 func (g *Grid[ObjID]) String() string {
 	return fmt.Sprintf("(%d:%d,%d)", g.id, g.row, g.col)
 }

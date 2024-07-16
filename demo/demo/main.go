@@ -27,25 +27,23 @@ func (o *obj) isPlayer() bool {
 }
 
 type game struct {
-	objs                   map[int]*obj
-	player                 *obj
-	minx, miny, maxx, maxy int
-	tickCount              int
-	a                      *aoi.AOIManager[int]
-	pause                  bool
-	see                    map[int]struct{}
+	objs       map[int]*obj
+	player     *obj
+	mapW, mapH int
+	tickCount  int
+	a          *aoi.AOIManager[int]
+	pause      bool
+	see        map[int]struct{}
 }
 
-func newGame(npcNum int, minx, miny, maxx, maxy, w, h int) *game {
-	a, err := aoi.NewAOIManager[int](minx, miny, maxx, maxy, w, h)
+func newGame(npcNum int, mapW, mapH, w, h int) *game {
+	a, err := aoi.NewAOIManager[int](mapW, mapH, w, h)
 	if err != nil {
 		panic(err)
 	}
 	g := &game{
-		minx: minx,
-		miny: miny,
-		maxx: maxx,
-		maxy: maxy,
+		mapW: mapW,
+		mapH: mapH,
 		a:    a,
 		objs: map[int]*obj{},
 		see:  map[int]struct{}{},
@@ -54,8 +52,8 @@ func newGame(npcNum int, minx, miny, maxx, maxy, w, h int) *game {
 	for i := 0; i < npcNum; i++ {
 		g.objs[i] = &obj{
 			id: i,
-			x:  rand.Int() % g.maxx,
-			y:  rand.Int() % g.maxy,
+			x:  rand.Int() % g.mapW,
+			y:  rand.Int() % g.mapH,
 		}
 		if i == 0 {
 			g.player = g.objs[i]
@@ -75,16 +73,16 @@ func (g *game) tick() {
 		}
 		o.x += o.vx
 		if o.x < 0 {
-			o.x = g.maxx
+			o.x = g.mapW
 		}
-		if o.x > g.maxx {
+		if o.x > g.mapW {
 			o.x = 0
 		}
 		o.y += o.vy
 		if o.y < 0 {
-			o.y = g.maxy
+			o.y = g.mapH
 		}
-		if o.y > g.maxy {
+		if o.y > g.mapH {
 			o.y = 0
 		}
 	}
@@ -92,48 +90,21 @@ func (g *game) tick() {
 		if !o.isPlayer() {
 			//continue
 		}
-		g.a.Move(o.id, o.x, o.y, func(event aoi.AOIEvent, eventMaker int, eventWatcher int) {
-			if eventMaker == g.player.id {
+		g.a.Move(o.id, o.x, o.y, func(event aoi.AOIEvent, other int) {
+			if o.id == g.player.id {
 				if event == aoi.Enter || event == aoi.Move {
-					g.see[eventWatcher] = struct{}{}
+					g.see[other] = struct{}{}
 				} else if event == aoi.Leave {
-					delete(g.see, eventWatcher)
+					delete(g.see, other)
 				}
-			} else if eventWatcher == g.player.id {
+			} else if other == g.player.id {
 				if event == aoi.Enter || event == aoi.Move {
-					g.see[eventMaker] = struct{}{}
+					g.see[o.id] = struct{}{}
 				} else if event == aoi.Leave {
-					delete(g.see, eventMaker)
+					delete(g.see, o.id)
 				}
 			}
 		})
-		/*
-			_, eg, lg :=
-			if o.isPlayer() {
-				eg.ForeachObj(func(id int) bool {
-					o.see[id] = struct{}{}
-					return true
-				})
-				lg.ForeachObj(func(id int) bool {
-					delete(o.see, id)
-					return true
-				})
-			} else {
-				eg.ForeachObj(func(id int) bool {
-					if g.objs[id].isPlayer() {
-						g.objs[id].see[o.id] = struct{}{}
-					}
-					return true
-				})
-				lg.ForeachObj(func(id int) bool {
-					if g.objs[id].isPlayer() {
-						delete(g.objs[id].see, o.id)
-					}
-					return true
-				})
-			}
-
-		*/
 	}
 
 	g.tickCount++
@@ -156,19 +127,19 @@ func main() {
 	defer ui.Close()
 
 	const (
-		w    = 8
-		h    = 4
-		maxw = w * 20
-		maxh = h * 10
+		gridW = 8
+		gridH = 4
+		mapW  = gridW * 20
+		mapH  = gridH * 10
 	)
 	rand.Seed(time.Now().Unix())
 	up2down := func(x1, y1, x2, y2 int) (int, int, int, int) {
-		return x1, maxh - y1, x2, maxh - y2
+		return x1, mapH - y1, x2, mapH - y2
 	}
 
 	var (
 		init    = false
-		g       = newGame(100, 0, 0, maxw, maxh, w, h)
+		g       = newGame(100, mapW, mapH, gridW, gridH)
 		ds      = make([]ui.Drawable, 0)
 		objGrid = map[int]*widgets.Paragraph{}
 	)
@@ -180,13 +151,13 @@ func main() {
 			for _, v := range g.a.AllGrids() {
 				p := widgets.NewParagraph()
 				p.Text = strconv.Itoa(v.ID())
-				p.SetRect(up2down(v.Rectangle()))
+				p.SetRect(up2down(v.BoundingBox()))
 				ds = append(ds, p)
 			}
 
 			for _, o := range g.objs {
 				dot := widgets.NewParagraph()
-				dot.SetRect(up2down(o.x, o.y, o.x+4, o.y+2))
+				dot.SetRect(up2down(o.x, o.y, o.x+1, o.y+1))
 				dot.Text = fmt.Sprintf(o.name())
 				/*
 					if o.isPlayer() {
@@ -207,7 +178,7 @@ func main() {
 		}
 		for _, o := range g.objs {
 			dot := objGrid[o.id]
-			dot.SetRect(up2down(o.x-2, o.y-1, o.x+2, o.y+1))
+			dot.SetRect(up2down(o.x-1, o.y-1, o.x+1, o.y+1))
 			dot.Text = fmt.Sprintf(o.name())
 			if o.isPlayer() {
 				dot.BorderStyle = ui.NewStyle(ui.ColorRed, ui.ColorRed)
@@ -257,7 +228,7 @@ func main() {
 				switch e.ID {
 				case "<MouseLeft>":
 					m := e.Payload.(ui.Mouse)
-					g.player.x, g.player.y = m.X, maxh-m.Y
+					g.player.x, g.player.y = m.X, mapH-m.Y
 					//cg, eg, lg = a.Move(1, x, y)
 					//render()
 					g.player.vx = 0
