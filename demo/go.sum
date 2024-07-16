@@ -1,9 +1,3 @@
-github.com/JoelOtter/termloop v0.0.0-20210806173944-5f7c38744afb h1:wXR5fXM/+4VFARcWVtjwb0wxfQl5RxemkNzzs2Jb918=
-github.com/JoelOtter/termloop v0.0.0-20210806173944-5f7c38744afb/go.mod h1:Tie7OOEgasw91JpzA8UywemPyGehxZ06Gqtl5B1/vXI=
-github.com/antonholmquist/jason v1.0.0 h1:Ytg94Bcf1Bfi965K2q0s22mig/n4eGqEij/atENBhA0=
-github.com/antonholmquist/jason v1.0.0/go.mod h1:+GxMEKI0Va2U8h3os6oiUAetHAlGMvxjdpAH/9uvUMA=
-github.com/byebyebruce/varmon v0.0.0-20221202084016-0bb617196f15 h1:r7IAXGlwR5VIu7HcZTiaI5ljPL4qj4SF5BkDD6UO7EQ=
-github.com/byebyebruce/varmon v0.0.0-20221202084016-0bb617196f15/go.mod h1:JafvbUomWaiXWcqxqKC7ZAsOO6NnaKb2Ckhn9bF55Zo=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/gizak/termui/v3 v3.1.0 h1:ZZmVDgwHl7gR7elfKf1xc4IudXZ5qqfDh4wExk4Iajc=
 github.com/gizak/termui/v3 v3.1.0/go.mod h1:bXQEBkJpzxUAKf0+xq9MSWAvWZlE7c+aidmyFlkYTrY=
@@ -16,7 +10,5 @@ github.com/mitchellh/go-wordwrap v1.0.0/go.mod h1:ZXFpozHsX6DPmq2I0TCekCxypsnAUb
 github.com/nsf/termbox-go v0.0.0-20190121233118-02980233997d h1:x3S6kxmy49zXVVyhcnrFqxvNVCBPb2KZ9hV2RBdS840=
 github.com/nsf/termbox-go v0.0.0-20190121233118-02980233997d/go.mod h1:IuKpRQcYE1Tfu+oAQqaLisqDeXgjyyltCfsaoYN18NQ=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
-github.com/pyk/byten v0.0.0-20140925233358-f847a130bf6d h1:/0nqYrqVyPTVDT2jPx9z9BZ+ItJWlWA9VITUGvNaZkI=
-github.com/pyk/byten v0.0.0-20140925233358-f847a130bf6d/go.mod h1:El8LdwAxb76Ih0mRmpu9uMVq+ajiqGSxmYiUe+nSr+w=
 github.com/stretchr/testify v1.8.1 h1:w7B6lhMri9wdJUVmEZPGGhZzrYTPvgJArz7wNPgYKsk=
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
