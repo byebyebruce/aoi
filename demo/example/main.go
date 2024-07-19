@@ -41,8 +41,8 @@ func main() {
 	)
 
 	// player enter
-	a.Enter(playerID, w/2, h/2, func(id int) {
-		seeList[id] = struct{}{}
+	a.Enter(playerID, w/3, h/2, func(_ aoi.EventType, trigger int, other int) {
+		seeList[other] = struct{}{}
 	})
 	fromGridID = a.ObjGrid(playerID).ID()
 	toGridID = a.ObjGrid(playerID).ID()
@@ -52,11 +52,11 @@ func main() {
 	for i := 0; i < 10; i++ {
 		// player move
 		randX, randY := rand.Int()%w, rand.Int()%h
-		a.Move(playerID, randX, randY, func(event aoi.AOIEvent, id int) {
+		a.Move(playerID, randX, randY, func(event aoi.EventType, id int, other int) {
 			if event == aoi.Enter { // npc enters player's view
-				seeList[id] = struct{}{}
+				seeList[other] = struct{}{}
 			} else if event == aoi.Leave { // npc leaves player's view
-				delete(seeList, id)
+				delete(seeList, other)
 			}
 		})
 		toGridID = a.ObjGrid(playerID).ID()
@@ -67,8 +67,8 @@ func main() {
 	}
 
 	// player leave
-	a.Leave(playerID, func(id int) {
-		delete(seeList, id)
+	a.Leave(playerID, func(event aoi.EventType, id int, other int) {
+		delete(seeList, other)
 	})
 	fmt.Println("player leave. seeList:", seeList)
 

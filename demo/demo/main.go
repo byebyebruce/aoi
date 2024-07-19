@@ -58,7 +58,7 @@ func newGame(npcNum int, mapW, mapH, w, h int) *game {
 		if i == 0 {
 			g.player = g.objs[i]
 		}
-		g.a.Enter(i, g.objs[i].x, g.objs[i].y, nil)
+		g.a.EnterWithType(i, g.objs[i].x, g.objs[i].y, i == 0, nil)
 	}
 
 	return g
@@ -90,7 +90,7 @@ func (g *game) tick() {
 		if !o.isPlayer() {
 			//continue
 		}
-		g.a.Move(o.id, o.x, o.y, func(event aoi.AOIEvent, other int) {
+		g.a.Move(o.id, o.x, o.y, func(event aoi.EventType, _ int, other int) {
 			if o.id == g.player.id {
 				if event == aoi.Enter || event == aoi.Move {
 					g.see[other] = struct{}{}

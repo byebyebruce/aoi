@@ -90,26 +90,30 @@ func TestAOI_Enter_Leave(tt *testing.T) {
 				enterID := make(map[int]struct{})
 				leaveID := make(map[int]struct{})
 				g := a.PosAtGrid(x, y)
-				g.ForeachInSurroundGrids(func(other int) {
-					if other == testID {
+				g.ForeachObjInSurroundGrids(func(id int) {
+					if id == testID {
 						return
 					}
-					enterID[other] = struct{}{}
-					leaveID[other] = struct{}{}
+					enterID[id] = struct{}{}
+					leaveID[id] = struct{}{}
 				})
 
-				exists := a.Enter(testID, x, y, func(other int) {
-					_, ok := enterID[other]
-					require.True(t, ok, other)
-					delete(enterID, other)
+				exists := a.Enter(testID, x, y, func(event EventType, trigger, observer int) {
+					require.EqualValues(t, testID, trigger)
+					require.Equal(t, Enter, event)
+					_, ok := enterID[observer]
+					require.True(t, ok, observer)
+					delete(enterID, observer)
 				})
 				require.True(t, exists)
 				require.Len(t, enterID, 0)
 
-				exists = a.Leave(testID, func(other int) {
-					_, ok := leaveID[other]
+				exists = a.Leave(testID, func(event EventType, trigger, observer int) {
+					require.EqualValues(t, testID, trigger)
+					require.Equal(t, Leave, event)
+					_, ok := leaveID[observer]
 					require.True(t, ok)
-					delete(leaveID, other)
+					delete(leaveID, observer)
 				})
 				require.True(t, exists)
 				require.Len(t, leaveID, 0)
@@ -236,19 +240,20 @@ func TestAOI_Move(t *testing.T) {
 				leaveID[i] = struct{}{}
 			}
 
-			exists := a.Move(testID, tt.args.toX, tt.args.toY, func(event AOIEvent, other int) {
+			exists := a.Move(testID, tt.args.toX, tt.args.toY, func(event EventType, trigger, observer int) {
+				require.EqualValues(t, testID, trigger)
 				if event == Enter {
-					_, ok := enterID[other]
-					require.True(t, ok, other)
-					delete(enterID, other)
+					_, ok := enterID[observer]
+					require.True(t, ok, observer)
+					delete(enterID, observer)
 				} else if event == Leave {
-					_, ok := leaveID[other]
+					_, ok := leaveID[observer]
 					require.True(t, ok)
-					delete(leaveID, other)
+					delete(leaveID, observer)
 				} else if event == Move {
-					_, ok := moveID[other]
+					_, ok := moveID[observer]
 					require.True(t, ok)
-					delete(moveID, other)
+					delete(moveID, observer)
 				}
 			})
 			require.True(t, exists)
@@ -257,6 +262,76 @@ func TestAOI_Move(t *testing.T) {
 			require.Len(t, moveID, 0)
 		})
 	}
+}
+
+type shouldCall map[int]struct{}
+
+func (s shouldCall) callFunc(t *testing.T) func(event EventType, trigger, observer int) {
+	return func(event EventType, trigger, observer int) {
+		_, ok := s[observer]
+		if !ok {
+			require.Fail(t, "should not call")
+		}
+		require.True(t, ok)
+		delete(s, observer)
+	}
+}
+func (s shouldCall) shouldEmpty(t *testing.T) {
+	require.Len(t, s, 0)
+}
+
+func TestAOI_Observer(tt *testing.T) {
+	a, err := NewAOIManager[int](100, 100, 10, 10)
+	require.Nil(tt, err)
+
+	shouldNotCall := func(event EventType, trigger, observer int) {
+		require.Fail(tt, "should not call")
+	}
+
+	a.EnterWithType(1, 10, 10, false, shouldNotCall)
+	a.EnterWithType(2, 10, 10, false, shouldNotCall)
+	a.Move(1, 20, 20, shouldNotCall)
+	a.Move(2, 20, 20, shouldNotCall)
+
+	_shouldCall := shouldCall{
+		1: {},
+		2: {},
+	}
+	a.EnterWithType(3, 20, 20, true, _shouldCall.callFunc(tt))
+	_shouldCall.shouldEmpty(tt)
+
+	_shouldCall = shouldCall{
+		1: {},
+		2: {},
+		3: {},
+	}
+	a.EnterWithType(4, 20, 20, true, _shouldCall.callFunc(tt))
+	_shouldCall.shouldEmpty(tt)
+
+	_shouldCall = shouldCall{
+		3: {},
+		4: {},
+	}
+	a.Move(1, 20, 20, _shouldCall.callFunc(tt))
+	_shouldCall.shouldEmpty(tt)
+
+	_shouldCall = shouldCall{
+		4: {},
+	}
+	a.Move(3, 20, 20, _shouldCall.callFunc(tt))
+	_shouldCall.shouldEmpty(tt)
+
+	_shouldCall = shouldCall{
+		3: {},
+	}
+	a.Move(4, 20, 20, _shouldCall.callFunc(tt))
+	_shouldCall.shouldEmpty(tt)
+
+	_shouldCall = shouldCall{
+		3: {},
+		4: {},
+	}
+	a.Leave(1, _shouldCall.callFunc(tt))
 }
 
 func BenchmarkMove(b *testing.B) {
@@ -273,6 +348,6 @@ func BenchmarkMove(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		x, y := rand.Int()%w, rand.Int()%h
-		_ = a.Move(i%obj, x, y, func(event AOIEvent, id int) {})
+		_ = a.Move(i%obj, x, y, func(event EventType, trigger, observer int) {})
 	}
 }
