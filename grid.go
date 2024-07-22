@@ -2,16 +2,31 @@ package aoi
 
 import "fmt"
 
+type set[T ObjID] map[T]struct{}
+
+func (s set[T]) Contains(k T) bool {
+	_, ok := s[k]
+	return ok
+}
+
+func (s set[T]) Foreach(f func(k T) bool) {
+	for k := range s {
+		if !f(k) {
+			break
+		}
+	}
+}
+
 // Grid 格子
 type Grid[T ObjID] struct {
-	id                     int              // 格子id
-	row, col               int              // 行列
-	minX, minY, maxX, maxY int              // 格子范围
-	surroundGrids          []*Grid[T]       // 包含自己在内的九个格子
-	surroundGridsMap       map[int]struct{} // map用作快速求交集并集
+	id                     int        // 格子id
+	row, col               int        // 行列
+	minX, minY, maxX, maxY int        // 格子范围
+	surroundGrids          []*Grid[T] // 包含自己在内的九个格子
+	surroundGridsMap       set[int]   // map用作快速求交集并集
 
-	observers map[T]struct{} // 观察者
-	objs      map[T]struct{} // obj
+	observers set[T] // 观察者
+	objs      set[T] // obj
 }
 
 func newGrid[T ObjID](id int, gridMinX, gridMinY, gridMaxX, gridMaxY int, row, col int) *Grid[T] {
@@ -44,8 +59,7 @@ func (g *Grid[ObjID]) clear() {
 }
 
 func (g *Grid[ObjID]) isSurround(gridID int) bool {
-	_, ok := g.surroundGridsMap[gridID]
-	return ok
+	return g.surroundGridsMap.Contains(gridID)
 }
 
 func (g *Grid[ObjID]) addSurroundGrid(other *Grid[ObjID]) {
@@ -94,12 +108,12 @@ func (g *Grid[ObjID]) Contains(obj ObjID) bool {
 }
 
 // ObjIDs 当前格子的所有obj
-func (g *Grid[ObjID]) ObjIDs() map[ObjID]struct{} {
+func (g *Grid[ObjID]) ObjIDs() set[ObjID] {
 	return g.objs
 }
 
 // ObserverIDs 当前格子的所有观察者
-func (g *Grid[ObjID]) ObserverIDs() map[ObjID]struct{} {
+func (g *Grid[ObjID]) ObserverIDs() set[ObjID] {
 	return g.observers
 }
 
@@ -108,23 +122,20 @@ func (g *Grid[ObjID]) SurroundGrids() []*Grid[ObjID] {
 	return g.surroundGrids
 }
 
-// ForeachObjInSurroundGrids 遍历当前格子包含的obj
-func (g *Grid[ObjID]) ForeachObjInSurroundGrids(f func(id ObjID)) {
+// ForeachInSurroundGrids 遍历当前格子包含的obj
+// NOTE: 遍历中进制修改grid
+func (g *Grid[ObjID]) ForeachInSurroundGrids(f func(id ObjID) bool) {
 	for _, v := range g.surroundGrids {
-		for k := range v.objs {
-			f(k)
-		}
+		v.objs.Foreach(f)
 	}
 }
 
-// HasObserverInSurroundGrids 遍历当前格子包含的obj
-func (g *Grid[ObjID]) HasObserverInSurroundGrids() bool {
+// ForeachObserverInSurroundGrids 遍历当前格子包含的obj
+// NOTE: 遍历中进制修改grid
+func (g *Grid[ObjID]) ForeachObserverInSurroundGrids(f func(id ObjID) bool) {
 	for _, v := range g.surroundGrids {
-		if len(v.observers) > 0 {
-			return true
-		}
+		v.observers.Foreach(f)
 	}
-	return false
 }
 
 func (g *Grid[ObjID]) String() string {

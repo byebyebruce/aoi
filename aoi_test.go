@@ -14,6 +14,22 @@ func init() {
 	rand.Seed(time.Now().Unix())
 }
 
+type testSet map[int]struct{}
+
+func (s testSet) callFunc(t *testing.T) func(event EventType, other int) {
+	return func(event EventType, other int) {
+		_, ok := s[other]
+		if !ok {
+			require.Fail(t, "should not call")
+		}
+		require.True(t, ok)
+		delete(s, other)
+	}
+}
+func (s testSet) shouldEmpty(t *testing.T) {
+	require.Len(t, s, 0)
+}
+
 func TestAOI_NewAOIManager(t *testing.T) {
 	_, err := NewAOIManager[int](100, 100, 10, 5)
 	require.Nil(t, err)
@@ -23,7 +39,7 @@ func TestAOI_NewAOIManager(t *testing.T) {
 	require.EqualValues(t, 1, a.col)
 	require.EqualValues(t, 1, a.row)
 
-	a, err = NewAOIManagerWithMinXY[int](-1, -1, 2, 2, 2, 2)
+	a, err = NewAOIManagerFrom[int](-1, -1, 2, 2, 2, 2)
 	require.Nil(t, err)
 }
 func TestAOI_InitManger(t *testing.T) {
@@ -77,7 +93,7 @@ func TestAOI_Enter_Leave(tt *testing.T) {
 			for j := 0; j < a.col; j++ {
 				x, y := j*a.gridW, i*a.gridH
 				id := a.gridIndex(i, j)
-				ok := a.Enter(id, x, y, true, nil)
+				ok := a.Enter(id, x, y, TriggerAndObserver, nil)
 				require.True(t, ok)
 			}
 		}
@@ -87,34 +103,24 @@ func TestAOI_Enter_Leave(tt *testing.T) {
 			for j := 0; j < a.col; j++ {
 				x, y := j*a.gridW, i*a.gridH
 
-				enterID := make(map[int]struct{})
-				leaveID := make(map[int]struct{})
+				var enterID testSet = make(map[int]struct{})
+				var leaveID testSet = make(map[int]struct{})
 				g := a.PosAtGrid(x, y)
-				g.ForeachObjInSurroundGrids(func(id int) {
-					if id == testID {
-						return
+				g.ForeachObserverInSurroundGrids(func(id int) bool {
+					if id != testID {
+						enterID[id] = struct{}{}
+						leaveID[id] = struct{}{}
 					}
-					enterID[id] = struct{}{}
-					leaveID[id] = struct{}{}
+					return true
 				})
 
-				exists := a.Enter(testID, x, y, true, func(event EventType, observer int) {
-					require.Equal(t, EnterView, event)
-					_, ok := enterID[observer]
-					require.True(t, ok, observer)
-					delete(enterID, observer)
-				})
+				exists := a.Enter(testID, x, y, TriggerAndObserver, enterID.callFunc(t))
 				require.True(t, exists)
-				require.Len(t, enterID, 0)
+				enterID.shouldEmpty(t)
 
-				exists = a.Leave(testID, func(event EventType, observer int) {
-					require.Equal(t, LeaveView, event)
-					_, ok := leaveID[observer]
-					require.True(t, ok)
-					delete(leaveID, observer)
-				})
+				exists = a.Leave(testID, leaveID.callFunc(t))
 				require.True(t, exists)
-				require.Len(t, leaveID, 0)
+				leaveID.shouldEmpty(t)
 			}
 		}
 	}
@@ -135,7 +141,7 @@ func TestAOI_Move(t *testing.T) {
 		for j := 0; j < a.col; j++ {
 			x, y := j*a.gridW, i*a.gridH
 			id := a.gridIndex(i, j)
-			ok := a.Enter(id, x, y, true, nil)
+			ok := a.Enter(id, x, y, TriggerAndObserver, nil)
 			require.True(t, ok)
 		}
 	}
@@ -222,11 +228,11 @@ func TestAOI_Move(t *testing.T) {
 		t.Run(fmt.Sprintf("test-%d", tt.args), func(t *testing.T) {
 			defer a.Leave(testID, nil)
 
-			a.Enter(testID, tt.args.fromX, tt.args.formY, true, nil)
+			a.Enter(testID, tt.args.fromX, tt.args.formY, TriggerAndObserver, nil)
 
-			enterID := make(map[int]struct{})
-			leaveID := make(map[int]struct{})
-			moveID := make(map[int]struct{})
+			var enterID testSet = make(map[int]struct{})
+			var leaveID testSet = make(map[int]struct{})
+			var moveID testSet = make(map[int]struct{})
 
 			for _, i := range tt.enter {
 				enterID[i] = struct{}{}
@@ -238,19 +244,19 @@ func TestAOI_Move(t *testing.T) {
 				leaveID[i] = struct{}{}
 			}
 
-			exists := a.Move(testID, tt.args.toX, tt.args.toY, func(event EventType, observer int) {
+			exists := a.Move(testID, tt.args.toX, tt.args.toY, func(event EventType, other int) {
 				if event == EnterView {
-					_, ok := enterID[observer]
-					require.True(t, ok, observer)
-					delete(enterID, observer)
+					_, ok := enterID[other]
+					require.True(t, ok, other)
+					delete(enterID, other)
 				} else if event == LeaveView {
-					_, ok := leaveID[observer]
+					_, ok := leaveID[other]
 					require.True(t, ok)
-					delete(leaveID, observer)
+					delete(leaveID, other)
 				} else if event == UpdateView {
-					_, ok := moveID[observer]
+					_, ok := moveID[other]
 					require.True(t, ok)
-					delete(moveID, observer)
+					delete(moveID, other)
 				}
 			})
 			require.True(t, exists)
@@ -260,23 +266,6 @@ func TestAOI_Move(t *testing.T) {
 		})
 	}
 }
-
-type shouldCall map[int]struct{}
-
-func (s shouldCall) callFunc(t *testing.T) func(event EventType, observer int) {
-	return func(event EventType, observer int) {
-		_, ok := s[observer]
-		if !ok {
-			require.Fail(t, "should not call")
-		}
-		require.True(t, ok)
-		delete(s, observer)
-	}
-}
-func (s shouldCall) shouldEmpty(t *testing.T) {
-	require.Len(t, s, 0)
-}
-
 func TestAOI_Observer(tt *testing.T) {
 	a, err := NewAOIManager[int](100, 100, 10, 10)
 	require.Nil(tt, err)
@@ -284,47 +273,71 @@ func TestAOI_Observer(tt *testing.T) {
 	shouldNotCall := func(event EventType, observer int) {
 		require.Fail(tt, "should not call")
 	}
+	a.Enter(1, 10, 10, TriggerAndObserver, nil)
 
-	a.Enter(1, 10, 10, false, shouldNotCall)
-	a.Enter(2, 10, 10, false, shouldNotCall)
+	_shouldCall := testSet{
+		1: {},
+	}
+	a.Enter(2, 10, 10, Observer, _shouldCall.callFunc(tt))
+	_shouldCall.shouldEmpty(tt)
+
+	_shouldCall = testSet{
+		2: {},
+	}
+	a.Move(1, 10, 10, _shouldCall.callFunc(tt))
+	_shouldCall.shouldEmpty(tt)
+
+	a.Move(2, 10, 10, shouldNotCall)
+}
+
+func TestAOI_Trigger(tt *testing.T) {
+	a, err := NewAOIManager[int](100, 100, 10, 10)
+	require.Nil(tt, err)
+
+	shouldNotCall := func(event EventType, observer int) {
+		require.Fail(tt, "should not call")
+	}
+
+	a.Enter(1, 10, 10, Trigger, shouldNotCall)
+	a.Enter(2, 10, 10, Trigger, shouldNotCall)
 	a.Move(1, 20, 20, shouldNotCall)
 	a.Move(2, 20, 20, shouldNotCall)
 
-	_shouldCall := shouldCall{
+	_shouldCall := testSet{
 		1: {},
 		2: {},
 	}
-	a.Enter(3, 20, 20, true, _shouldCall.callFunc(tt))
+	a.Enter(3, 20, 20, TriggerAndObserver, _shouldCall.callFunc(tt))
 	_shouldCall.shouldEmpty(tt)
 
-	_shouldCall = shouldCall{
+	_shouldCall = testSet{
 		1: {},
 		2: {},
 		3: {},
 	}
-	a.Enter(4, 20, 20, true, _shouldCall.callFunc(tt))
+	a.Enter(4, 20, 20, TriggerAndObserver, _shouldCall.callFunc(tt))
 	_shouldCall.shouldEmpty(tt)
 
-	_shouldCall = shouldCall{
+	_shouldCall = testSet{
 		3: {},
 		4: {},
 	}
 	a.Move(1, 20, 20, _shouldCall.callFunc(tt))
 	_shouldCall.shouldEmpty(tt)
 
-	_shouldCall = shouldCall{
+	_shouldCall = testSet{
 		4: {},
 	}
 	a.Move(3, 20, 20, _shouldCall.callFunc(tt))
 	_shouldCall.shouldEmpty(tt)
 
-	_shouldCall = shouldCall{
+	_shouldCall = testSet{
 		3: {},
 	}
 	a.Move(4, 20, 20, _shouldCall.callFunc(tt))
 	_shouldCall.shouldEmpty(tt)
 
-	_shouldCall = shouldCall{
+	_shouldCall = testSet{
 		3: {},
 		4: {},
 	}
@@ -339,7 +352,7 @@ func BenchmarkAOI_Move(b *testing.B) {
 	)
 	a, _ := NewAOIManager[int](w, h, 10, 10)
 	for i := 0; i < obj; i++ {
-		a.Enter(i, rand.Int()%w, rand.Int()%h, true, nil)
+		a.Enter(i, rand.Int()%w, rand.Int()%h, TriggerAndObserver, nil)
 	}
 	moveXMin := -2 * a.gridW
 	moveYMin := -2 * a.gridH
