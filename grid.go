@@ -9,8 +9,9 @@ type Grid[T ObjID] struct {
 	minX, minY, maxX, maxY int              // 格子范围
 	surroundGrids          []*Grid[T]       // 包含自己在内的九个格子
 	surroundGridsMap       map[int]struct{} // map用作快速求交集并集
-	observers              map[T]struct{}   // 观察者
-	objs                   map[T]struct{}   // obj
+
+	observers map[T]struct{} // 观察者
+	objs      map[T]struct{} // obj
 }
 
 func newGrid[T ObjID](id int, gridMinX, gridMinY, gridMaxX, gridMaxY int, row, col int) *Grid[T] {
@@ -58,16 +59,16 @@ func (g *Grid[ObjID]) addSurroundGrid(other *Grid[ObjID]) {
 	}
 }
 
-func (g *Grid[ObjID]) invokeEvent(id ObjID, toAll bool, eventType EventType, cb EventCallback[ObjID]) {
+func (g *Grid[ObjID]) invokeEvent(triggerID ObjID, toAll bool, eventType EventType, cb EventCallback[ObjID]) {
 	others := g.observers
 	if toAll {
 		others = g.objs
 	}
 	for other := range others {
-		if id == other {
+		if triggerID == other {
 			continue
 		}
-		cb(eventType, id, other)
+		cb(eventType, other)
 	}
 }
 

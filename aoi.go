@@ -14,13 +14,19 @@ import (
 
 例如3行row 4列col
 
-   col0 col1 col2 col3
-	+---+---+---+---+
+	   col0 col1 col2 col3
+		+---+---+---+---+
+
 row2| 8 | 9 | 10| 11|
+
 	+---+---+---+---+
+
 row1| 4 | 5 | 6 | 7 |
+
 	+---+---+---+---+
+
 row0| 0 | 1 | 2 | 3 |
+
 	+---+---+---+---+
 
 	 ^y
@@ -37,19 +43,16 @@ row0| 0 | 1 | 2 | 3 |
 相邻可见的格子:
 0格子只能看到0,1,4,5
 6格子能看到6,1,2,3,5,7,9,10,11
-*/
 
-/*
 AOI事件规则:
+!!!任何事件都不通知事件的trigger!!!
 
-	 **任何事件都不通知事件的trigger**
-
-	1. 进入事件: 通知九宫格内所有观察者进入事件
-	2. 离开事件: 通知九宫格内所有观察者离开事件
-	3. 移动事件:
-	   a. 通知离开的的九宫格(之前所在的九宫格-新进入的九宫格)离开事件
-	   b. 通知没变的九宫格(之前所在的九宫格和新进入的九宫格取交集)移动事件
-	   c. 通知新进入的九宫格(新进入的九宫格-之前所在的九宫格)进入事件
+1. 进入事件: 通知九宫格内所有观察者进入事件
+2. 离开事件: 通知九宫格内所有观察者离开事件
+3. 更新事件:
+a. 通知离开的的九宫格(之前所在的九宫格-新进入的九宫格)离开事件
+b. 通知没变的九宫格(之前所在的九宫格和新进入的九宫格取交集)移动事件
+c. 通知新进入的九宫格(新进入的九宫格-之前所在的九宫格)进入事件
 */
 const (
 	// GridLength 一边3个格子
@@ -62,24 +65,34 @@ const (
 type EventType int
 
 const (
-	// Enter 进入事件
-	Enter EventType = iota
-	// Leave 离开事件
-	Leave
-	// Move 移动事件
-	Move
+	// EnterView 进入事件
+	EnterView EventType = iota
+	// LeaveView 离开事件
+	LeaveView
+	// UpdateView 更新事件
+	UpdateView
 )
 
-// ObjID id 类型
+// ObjID id
+// 类型
 type ObjID interface {
 	comparable
 }
 
-type EventCallback[T ObjID] func(event EventType, trigger, other T)
+// EventCallback 事件回调, event 事件类型, other 其他对象的id
+// ***注意***
+// 事件不会回调事件触发者
+// Enter时的事件只会是EnterView
+// Leave时的事件只会是LeaveView
+type EventCallback[T ObjID] func(event EventType, other T)
 
+// obj 对象
 type obj struct {
-	gridID     int
-	x, y       int
+	// 所在格子id
+	gridID int
+	// 坐标
+	x, y int
+	// 是否是观察者, 非观察者不接受事件通知
 	isObserver bool
 }
 
@@ -173,15 +186,10 @@ func (m *AOIManager[ObjID]) init() {
 	}
 }
 
-// Enter 进入
-// eventType 只会是Enter
-func (m *AOIManager[ObjID]) Enter(id ObjID, posX, posY int, cb EventCallback[ObjID]) bool {
-	return m.EnterWithType(id, posX, posY, true, cb)
-}
-
-// EnterWithType 进入
-// eventType 只会是Enter
-func (m *AOIManager[ObjID]) EnterWithType(id ObjID, posX, posY int, isObserver bool, cb EventCallback[ObjID]) bool {
+// Enter 进入，cb是因
+// eventType 只会是EnterView
+// isObserver 是否是观察者. 只有观察者才会接受事件通知(一般player为观察者，npc为非观察者)
+func (m *AOIManager[ObjID]) Enter(id ObjID, posX, posY int, isObserver bool, cb EventCallback[ObjID]) bool {
 	if _, ok := m.objs[id]; ok {
 		return false
 	}
@@ -189,19 +197,18 @@ func (m *AOIManager[ObjID]) EnterWithType(id ObjID, posX, posY int, isObserver b
 	g.add(id, isObserver)
 	o := &obj{g.id, posX, posY, isObserver}
 	m.objs[id] = o
-
 	if cb == nil {
 		return true
 	}
 
 	for _, sg := range g.SurroundGrids() {
-		sg.invokeEvent(id, o.isObserver, Enter, cb)
+		sg.invokeEvent(id, isObserver, EnterView, cb)
 	}
 	return true
 }
 
 // Leave 离开
-// event 只会是Leave
+// event 只会是LeaveView
 func (m *AOIManager[ObjID]) Leave(id ObjID, cb EventCallback[ObjID]) bool {
 	o, ok := m.objs[id]
 	if !ok {
@@ -215,7 +222,7 @@ func (m *AOIManager[ObjID]) Leave(id ObjID, cb EventCallback[ObjID]) bool {
 		return true
 	}
 	for _, sg := range g.SurroundGrids() {
-		sg.invokeEvent(id, o.isObserver, Leave, cb)
+		sg.invokeEvent(id, o.isObserver, LeaveView, cb)
 	}
 
 	return true
@@ -227,19 +234,19 @@ fromGrid: 当前所在格子
 toGrid: 移动到的格子
 
 公式
-Leave = fromGrid - toGrid
-Move = fromGrid ∩ toGrid
-Enter = toGrid - fromGrid
+EnterView = toGrid - fromGrid
+UpdateView = fromGrid ∩ toGrid
+LeaveView = fromGrid - toGrid
 
-L: Leave
-M: Move
-E: Enter
+L: LeaveView
+U: UpdateView
+E: EnterView
 +----+----+----+----+
-|  L |  M |  M |  E |
+|  L |  U |  U |  E |
 +----+----+----+----+
 |  L |from| to |  E |
 +----+----+----+----+
-|  L |  M |  M |  E |
+|  L |  U |  U |  E |
 +----+----+----+----+
 */
 func (m *AOIManager[ObjID]) Move(id ObjID, toPosX, toPosY int, cb EventCallback[ObjID]) bool {
@@ -265,7 +272,7 @@ func (m *AOIManager[ObjID]) Move(id ObjID, toPosX, toPosY int, cb EventCallback[
 	// 情况1. 在同一个格子内移动
 	if fromGrid.id == toGrid.id {
 		for _, sg := range toGrid.SurroundGrids() {
-			sg.invokeEvent(id, false, Move, cb)
+			sg.invokeEvent(id, false, UpdateView, cb)
 		}
 		return true
 	}
@@ -274,10 +281,10 @@ func (m *AOIManager[ObjID]) Move(id ObjID, toPosX, toPosY int, cb EventCallback[
 	if abs(toGrid.row-fromGrid.row) >= GridLength ||
 		abs(toGrid.col-fromGrid.col) >= GridLength {
 		for _, sg := range toGrid.SurroundGrids() {
-			sg.invokeEvent(id, o.isObserver, Enter, cb)
+			sg.invokeEvent(id, o.isObserver, EnterView, cb)
 		}
 		for _, sg := range fromGrid.SurroundGrids() {
-			sg.invokeEvent(id, o.isObserver, Leave, cb)
+			sg.invokeEvent(id, o.isObserver, LeaveView, cb)
 		}
 		return true
 	}
@@ -286,21 +293,21 @@ func (m *AOIManager[ObjID]) Move(id ObjID, toPosX, toPosY int, cb EventCallback[
 	// 离开的格子 = 原来所在的九宫格-到达的九宫格
 	for _, grid := range fromGrid.SurroundGrids() {
 		if !toGrid.isSurround(grid.id) {
-			grid.invokeEvent(id, o.isObserver, Leave, cb)
+			grid.invokeEvent(id, o.isObserver, LeaveView, cb)
 		}
 	}
 
 	// 没变的格子 = 原来所在的九宫格和到达的九宫格取交集
 	for _, grid := range toGrid.SurroundGrids() {
 		if fromGrid.isSurround(grid.id) {
-			grid.invokeEvent(id, false, Move, cb)
+			grid.invokeEvent(id, false, UpdateView, cb)
 		}
 	}
 
 	// 新进入的格子 = 到达的九宫格-原来所在的九宫格
 	for _, grid := range toGrid.SurroundGrids() {
 		if !fromGrid.isSurround(grid.id) {
-			grid.invokeEvent(id, o.isObserver, Enter, cb)
+			grid.invokeEvent(id, o.isObserver, EnterView, cb)
 		}
 	}
 
