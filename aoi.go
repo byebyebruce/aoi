@@ -14,8 +14,8 @@ import (
 
 例如3行row 4列col
 
-	   col0 col1 col2 col3
-		+---+---+---+---+
+	col0 col1 col2 col3
+	+---+---+---+---+
 
 row2| 8 | 9 | 10| 11|
 
@@ -66,21 +66,21 @@ type EventType int
 
 const (
 	// EnterView 进入事件
-	// 事件制造者只是触发者，会回调所有观察者(例如npc进入，通知周围的player创建这个新进入的npc)
-	// 事件制造者只是观察者，会回调所有人(例如隐身的gm进入，通知gm创建所有可见的人，不通知其他人gm进入)
-	// 事件制造者既是触发者又是观察者，会回调所有人(例如player进入，通知player创建所有可见的人)
+	// 如果行动人只是触发者: 会回调所有观察者(例如npc进入，通知周围的player创建这个新进入的npc)
+	// 如果行动人只是观察者: 会回调所有人(例如隐身的gm进入，通知gm创建所有可见的人，不通知其他人gm进入)
+	// 如果行动人既是触发者又是观察者: 会回调所有人(例如player进入，通知player创建所有可见的人)
 	EnterView EventType = iota
 
 	// LeaveView 离开事件
-	// 事件制造者只是触发者，会回调所有观察者(例如npc离开，通知周围的player删除这个离开的npc)
-	// 事件制造者只是观察者，会回调所有人(例如gm离开，通知gm删除所有可见的人，不通知其他人gm离开)
-	// 事件制造者既是触发者又是观察者，会回调所有人(例如player离开，通知player删除所有可见的人)
+	// 如果行动人只是触发者: 会回调所有观察者(例如npc离开，通知周围的player删除这个离开的npc)
+	// 如果行动人只是观察者: 会回调所有人(例如隐身的gm离开，通知gm删除所有可见的人，不通知其他人gm离开)
+	// 如果行动人既是触发者又是观察者: 会回调所有人(例如player离开，通知player删除所有可见的人)
 	LeaveView
 
 	// UpdateView 更新事件
-	// 事件制造者只是触发者，会回调所有观察者(例如npc移动，通知周围的player这个npc移动了)
-	// 事件制造者只是观察者，不会回调任何人(例如gm移动，不会通知任何人)
-	// 事件制造者既是触发者又是观察者，会回调所有观察者(例如player移动，通知周围的player这个player移动了)
+	// 如果行动人只是触发者: 会回调所有观察者(例如npc移动，通知周围的player这个npc移动了)
+	// 如果行动人只是观察者: 不会回调任何人(例如隐身的gm移动，不会通知任何人)
+	// 如果行动人既是触发者又是观察者: 会回调所有观察者(例如player移动，通知周围的player这个player移动了)
 	UpdateView
 )
 
@@ -98,19 +98,18 @@ const (
 	TriggerAndObserver = Trigger | Observer
 )
 
+// IsTrigger 是否触发事件
 func (o ObjType) IsTrigger() bool {
 	return o&Trigger != 0
 }
 
+// IsObserver 是否观察事件
 func (o ObjType) IsObserver() bool {
 	return o&Observer != 0
 }
 
-// ObjID id
-// 类型
-type ObjID interface {
-	comparable
-}
+// ObjID 对象id
+type ObjID = comparable
 
 // EventCallback 事件回调, event 事件类型, other 其他对象的id
 // ***注意***
@@ -221,7 +220,6 @@ func (m *AOIManager[ObjID]) init() {
 
 // Enter 进入，cb是因
 // eventType 只会是EnterView
-// isObserver 是否是观察者. 只有观察者才会接受事件通知(一般player为观察者，npc为非观察者)
 func (m *AOIManager[ObjID]) Enter(id ObjID, posX, posY int, ot ObjType, cb EventCallback[ObjID]) bool {
 	if _, ok := m.objs[id]; ok {
 		return false
