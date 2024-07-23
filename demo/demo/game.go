@@ -72,15 +72,16 @@ func newGame(npcNum int, mapW, mapH, w, h int) *game {
 
 func (g *game) choosePlayer(i int) {
 	if g.objs[i] == nil {
-		g.objs[i] = &obj{
+		o := &obj{
 			id:         i,
 			x:          rand.Int() % g.mapW,
 			y:          rand.Int() % g.mapH,
 			seeList:    map[int]struct{}{},
 			playerFlag: true,
 		}
-		g.a.Enter(i, g.objs[i].x, g.objs[i].y, aoi.TriggerAndObserver, func(_ aoi.EventType, other int) {
-			g.objs[i].seeList[other] = struct{}{}
+		g.objs[i] = o
+		g.a.Enter(i, o.x, o.y, aoi.TriggerAndObserver, func(_ aoi.EventType, other int) {
+			o.seeList[other] = struct{}{}
 		})
 	}
 	if oldPlayer := g.currentPlayer; oldPlayer != nil {

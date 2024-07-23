@@ -6,6 +6,7 @@
 红色表示自己当前的player  
 蓝色表示其他player  
 黄色表示npc
+高亮表示自己可见
 
 ![](img.png)
 
